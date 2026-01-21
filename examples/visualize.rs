@@ -6,11 +6,17 @@ use eframe::egui::{self, ColorImage};
 use egui_plot::{Line, Plot, PlotImage, PlotPoints};
 use num_complex::Complex;
 use eframe::egui::Color32;
-use mobius_applicatio::MobiusTransform;
+use mobius_applicatio::{MobiusTransform, plane_functions};
+
+// Window and plot sizing
+const WINDOW_SIZE: f32 = 1280.0;
+const PLOT_SIZE: f32 = 1200.0;
+const IMAGE_RESOLUTION: usize = 1280;
+const PLANE_RANGE: f64 = 2.0;  // Complex plane spans from -PLANE_RANGE to +PLANE_RANGE
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([700.0, 700.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([WINDOW_SIZE, WINDOW_SIZE]),
         ..Default::default()
     };
     
@@ -33,7 +39,14 @@ impl eframe::App for ComplexPlaneApp {
             
             // Generate the color-mapped image if not already created
             if self.image_texture.is_none() {
-                let image = self.generate_color_image(400, 400, -2.0, 2.0, -2.0, 2.0);
+                let image = self.generate_color_image(
+                    IMAGE_RESOLUTION, 
+                    IMAGE_RESOLUTION, 
+                    -PLANE_RANGE, 
+                    PLANE_RANGE, 
+                    -PLANE_RANGE, 
+                    PLANE_RANGE
+                );
                 self.image_texture = Some(ui.ctx().load_texture(
                     "complex_plane_colors",
                     image,
@@ -43,8 +56,8 @@ impl eframe::App for ComplexPlaneApp {
             
             Plot::new("complex_plane")
                 .view_aspect(1.0)
-                .width(600.0)
-                .height(600.0)
+                .width(PLOT_SIZE)
+                .height(PLOT_SIZE)
                 .show(ui, |plot_ui| {
                     // Render the color-mapped image
                     if let Some(texture) = &self.image_texture {
@@ -52,7 +65,7 @@ impl eframe::App for ComplexPlaneApp {
                             PlotImage::new(
                                 texture,
                                 egui_plot::PlotPoint::new(0.0, 0.0), // center
-                                [4.0, 4.0], // size: -2 to +2 in both dimensions
+                                [(2.0 * PLANE_RANGE) as f32, (2.0 * PLANE_RANGE) as f32], // size in plot coordinates
                             )
                         );
                     }
@@ -134,30 +147,23 @@ fn point_color(z: Complex<f64>) -> Option<Color32> {
         Complex::new(-1.0, 0.0),  // b
         Complex::new(1.0, 0.0),  // c
         Complex::new(1.0, 0.0),  // d
-    );
+    ).expect("Valid transform coefficients");
+    // let transform = MobiusTransform::identity();
     let z = transform.apply(z);
     
-    plane_grid(z, 0.01)
-}
-
-/// Create a grid pattern on the complex plane.
-/// Returns colored bars at regular intervals.
-fn plane_grid(z: Complex<f64>, thickness: f64) -> Option<Color32> {
-    // Check if we're in a red vertical bar (every 0.2 units)
-    let re_mod = (z.re.abs() % 0.2).abs();
-    let in_red_bar = re_mod >= 0.1 - thickness && re_mod < 0.1 + thickness;
-    
-    // Check if we're in a blue horizontal bar (every 0.2 units)
-    let im_mod = (z.im.abs() % 0.2).abs();
-    let in_blue_bar = im_mod >= 0.1 - thickness && im_mod < 0.1 + thickness;
-    
-    if in_red_bar && in_blue_bar {
-        Some(Color32::from_rgb(255, 0, 255)) // Purple where bars overlap
-    } else if in_red_bar {
-        Some(Color32::from_rgb(255, 0, 0)) // Red vertical bars
-    } else if in_blue_bar {
-        Some(Color32::from_rgb(0, 0, 255)) // Blue horizontal bars
-    } else {
-        None // Transparent
+    // Test each grid type in order, return first match with its color
+    if plane_functions::vertical_grid(z, 0.2, 0.01) {
+        return Some(Color32::from_rgb(255, 0, 0)); // Red vertical bars
     }
+    if plane_functions::horizontal_grid(z, 0.2, 0.01) {
+        return Some(Color32::from_rgb(0, 0, 255)); // Blue horizontal bars
+    }
+    if plane_functions::radial_grid(z, 0.2, 0.01) {
+        return Some(Color32::from_rgb(0, 255, 0)); // Green circles
+    }
+    if plane_functions::angular_grid(z, std::f64::consts::PI / 12.0, 0.01) {
+        return Some(Color32::from_rgb(255, 0, 255)); // Magenta angular lines
+    }
+    
+    None
 }
